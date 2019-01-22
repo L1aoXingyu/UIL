@@ -51,7 +51,7 @@
     <div align=center>
     <img src='assets/online_train.png' width='600'>
     </div>
-4. 不断重复 2 - 3，同时 check online 生成的 label 是否正常
+4. 不断重复 2 - 3，同时 check online 生成的 label 是否正常
 
 ### 结果
 在 100 个 ID 上面 train 的 basemodel 结果如下
