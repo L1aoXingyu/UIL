@@ -1,0 +1,44 @@
+MODEL:
+  PRETRAIN_PATH: '/export/home/lxy/.torch/models/resnet50-19c8e357.pth'
+
+
+INPUT:
+  SIZE_TRAIN: [256, 128]
+  SIZE_TEST: [256, 128]
+  PROB: 0.5 # random horizontal flip
+  PADDING: 10
+
+DATASETS:
+  NAMES: ('market1501', )
+
+DATALOADER:
+  SAMPLER: 'softmax_triplet'
+  NUM_INSTANCE: 4
+  NUM_WORKERS: 8
+
+SOLVER:
+  OPTIMIZER_NAME: 'Adam'
+  MAX_EPOCHS: 200
+  BASE_LR: 0.0000035
+  BIAS_LR_FACTOR: 1
+  WEIGHT_DECAY: 0.0005
+  WEIGHT_DECAY_BIAS: 0.0005
+  IMS_PER_BATCH: 64
+
+  STEPS: [40, 70]
+  GAMMA: 0.1
+
+  MARGIN: 15.0
+
+  CHECKPOINT_PERIOD: 40
+  LOG_PERIOD: 50
+  EVAL_PERIOD: 5
+  DIST_PERIOD: 1
+
+TEST:
+  IMS_PER_BATCH: 256
+  WEIGHT: "path"
+
+OUTPUT_DIR: "/export/home/lxy/experiments/online/market1501/online-training"
+
+
