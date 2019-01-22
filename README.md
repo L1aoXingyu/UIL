@@ -45,9 +45,9 @@
 </div>
 
 ### 训练流程
-1. 在 `train.txt` 上训练 basemodel  
+1. 在 `train.txt` 上训练 basemodel  
 2. 在 `validation.txt` 上画出分布曲线，并确定阈值  
-3. 对 `online.txt` 进行 sample，根据如下规则进行训练  
+3. 对 `online.txt` 进行sample，根据如下规则进行训练  
     <div align=center>
     <img src='assets/online_train.png' width='600'>
     </div>
@@ -66,12 +66,12 @@
 <img src='assets/base_dist.png', width='500'>
 </div>
 
-因为训练集较小，所以正负样本重叠的区域比较多，按照我们的思路，可以用 online learning 进行优化
+因为训练集较小，所以正负样本重叠的区域比较多，按照我们的思路，可以用 online learning 进行优化
 
 ------
 
 ## 2019.1.14
-### Hypothesis
+### Hypothesis
 我们假定 ReID 数据集在 testset 下应该有如下的分布
 
 <div align=center>
@@ -103,5 +103,5 @@
 1. train set，从整个 training
 set 选择 100 个人，尽量选择图片数目大于 5 的人，然后每个人 5 张图片，一共 500 张图片构成 train set 来训练 basemodel
 2. validation set，选择 100 个人用来 determine 阈值
-3. online train set，整个 training set 剩下的数据作为 online train set，没有 label，每次过来一部分数据集
+3. online train set，整个 training set 剩下的数据作为 online train set，没有 label，每次过来一部分数据集
 4. test set，原始的 query/gallery set 对 model 的performance 进行测试
