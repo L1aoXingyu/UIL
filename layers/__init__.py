@@ -6,8 +6,8 @@
 
 import torch.nn.functional as F
 
-from .triplet_loss import TripletLoss
 from .online_loss import OnlineLoss
+from .triplet_loss import TripletLoss
 
 
 def make_loss(cfg):
@@ -26,13 +26,4 @@ def make_loss(cfg):
     else:
         print('expected sampler should be softmax, triplet or softmax_triplet, '
               'but got {}'.format(cfg.DATALOADER.SAMPLER))
-    return loss_func
-
-
-def make_online_loss(cfg):
-    online = OnlineLoss(cfg.SOLVER.MARGIN)
-
-    def loss_func(feats, train_feats, picked_index):
-        return online(feats, train_feats, picked_index)
-
     return loss_func

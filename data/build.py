@@ -16,17 +16,8 @@ def make_data_loader(cfg):
     train_transforms = build_transforms(cfg, is_train=True)
     test_transforms = build_transforms(cfg, is_train=False)
     num_workers = cfg.DATALOADER.NUM_WORKERS
-    if len(cfg.DATASETS.NAMES) == 1:
-        with open(cfg.DATASETS.TRAIN, 'r') as f:
-            train = [i.strip('\n') for i in f.readlines()]
-        with open(cfg.DATASETS.VALIDATION, 'r') as f:
-            validation = [i.strip('\n') for i in f.readlines()]
-        with open(cfg.DATASETS.ONLINE, 'r') as f:
-            online = [i.strip('\n') for i in f.readlines()]
-        dataset = init_dataset(cfg.DATASETS.NAMES[0], trainset=train, validationset=validation, onlineset=online)
-    else:
-        # TODO: add multi dataset to train
-        dataset = init_dataset(cfg.DATASETS.NAMES)
+
+    dataset = init_dataset(cfg.DATASETS.BASE)
 
     # train set
     num_classes = dataset.num_train_pids
@@ -39,27 +30,21 @@ def make_data_loader(cfg):
     else:
         train_loader = DataLoader(
             train_set, batch_size=cfg.SOLVER.IMS_PER_BATCH,
-            sampler=RandomIdentitySampler(dataset.train, cfg.SOLVER.IMS_PER_BATCH, cfg.DATALOADER.NUM_INSTANCE),
+            sampler=RandomIdentitySampler(dataset.train, cfg.DATALOADER.NUM_INSTANCE),
             num_workers=num_workers, collate_fn=train_collate_fn
         )
 
-    # validation set
-    validation_set = ImageDataset(dataset.validation, test_transforms)
-    valid_loader = DataLoader(
-        validation_set, batch_size=cfg.TEST.IMS_PER_BATCH, shuffle=False, num_workers=num_workers,
-        collate_fn=test_collate_fn
-    )
-
     # online set
-    online_set = ImageDataset(dataset.online_train, transform=None)
+    onlineset = init_dataset(cfg.DATASETS.ONLINE)
+    online_train = ImageDataset(onlineset.train, transform=train_transforms)
 
     # query/gallery set
-    test_set = ImageDataset(dataset.query + dataset.gallery, test_transforms)
+    test_set = ImageDataset(onlineset.query + onlineset.gallery, test_transforms)
     test_loader = DataLoader(
         test_set, batch_size=cfg.TEST.IMS_PER_BATCH, shuffle=False, num_workers=num_workers,
         collate_fn=test_collate_fn
     )
-    return train_loader, test_loader, len(dataset.query), num_classes
+    return train_loader, test_loader, len(onlineset.query), num_classes
 
 
 def make_online_loader(cfg):

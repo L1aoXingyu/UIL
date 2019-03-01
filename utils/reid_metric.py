@@ -9,7 +9,7 @@ import torch
 from ignite.metrics import Metric
 import torch.nn.functional as F
 
-from data.datasets.eval_reid import eval_func
+from data.datasets.eval_reid import evaluate
 
 
 class R1_mAP(Metric):
@@ -41,11 +41,11 @@ class R1_mAP(Metric):
         g_pids = np.asarray(self.pids[self.num_query:])
         g_camids = np.asarray(self.camids[self.num_query:])
         m, n = qf.shape[0], gf.shape[0]
-        distmat = torch.mm(qf, gf.t())
-        # distmat = torch.pow(qf, 2).sum(dim=1, keepdim=True).expand(m, n) + \
-        #           torch.pow(gf, 2).sum(dim=1, keepdim=True).expand(n, m).t()
-        # distmat.addmm_(1, -2, qf, gf.t())
-        distmat = -distmat.cpu().numpy()
-        cmc, mAP = eval_func(distmat, q_pids, g_pids, q_camids, g_camids)
+        distmat = torch.pow(qf, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+                  torch.pow(gf, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+        distmat.addmm_(1, -2, qf, gf.t())
+        distmat = distmat.sqrt().cpu().numpy()
+
+        cmc, mAP = evaluate(distmat, q_pids, g_pids, q_camids, g_camids)
 
         return cmc, mAP

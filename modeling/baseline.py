@@ -67,23 +67,3 @@ class Baseline(nn.Module):
             if i in self.state_dict():
                 self.state_dict()[i].copy_(param_dict[i])
 
-
-class OnlineModel(nn.Module):
-    in_planes = 2048
-
-    def __init__(self, last_stride):
-        super(OnlineModel, self).__init__()
-        self.base = ResNet(last_stride)
-        self.gap = nn.AdaptiveAvgPool2d(1)
-
-    def forward(self, x):
-        x = self.base(x)  # (b, 2048, 24, 8)
-        global_feat = self.gap(x)  # (b, 2048, 1, 1)
-        global_feat = global_feat.view(global_feat.shape[0], -1)  # flatten to (bs, 2048)
-        return global_feat
-
-    def load_weight(self, basemodel_path):
-        param_dict = torch.load(basemodel_path)
-        for i in param_dict:
-            if i in self.state_dict():
-                self.state_dict()[i].copy_(param_dict[i])

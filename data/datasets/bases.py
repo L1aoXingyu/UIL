@@ -48,20 +48,22 @@ class BaseImageDataset(BaseDataset):
     Base class of image reid dataset
     """
 
-    def print_dataset_statistics(self, train, validation, online, query, gallery):
+    def print_dataset_statistics(self, train, query=None, gallery=None):
         num_train_pids, num_train_imgs, num_train_cams = self.get_imagedata_info(train)
-        num_valid_pids, num_valid_imgs, num_valid_cams = self.get_imagedata_info(validation)
-        num_online_pids, num_online_imgs, num_online_cams = self.get_imagedata_info(online)
-        num_query_pids, num_query_imgs, num_query_cams = self.get_imagedata_info(query)
-        num_gallery_pids, num_gallery_imgs, num_gallery_cams = self.get_imagedata_info(gallery)
+        if query is None:
+            num_query_pids, num_query_imgs, num_query_cams = 0, 0, 0
+        else:
+            num_query_pids, num_query_imgs, num_query_cams = self.get_imagedata_info(query)
+        if gallery is None:
+            num_gallery_pids, num_gallery_imgs, num_gallery_cams = 0, 0, 0
+        else:
+            num_gallery_pids, num_gallery_imgs, num_gallery_cams = self.get_imagedata_info(gallery)
 
         print("Dataset statistics:")
         print("  ----------------------------------------")
         print("  subset   | # ids | # images | # cameras")
         print("  ----------------------------------------")
         print("  train    | {:5d} | {:8d} | {:9d}".format(num_train_pids, num_train_imgs, num_train_cams))
-        print("  valid    | {:5d} | {:8d} | {:9d}".format(num_valid_pids, num_valid_imgs, num_valid_cams))
-        print("  online   | {:5d} | {:8d} | {:9d}".format(num_online_pids, num_online_imgs, num_online_cams))
         print("  query    | {:5d} | {:8d} | {:9d}".format(num_query_pids, num_query_imgs, num_query_cams))
         print("  gallery  | {:5d} | {:8d} | {:9d}".format(num_gallery_pids, num_gallery_imgs, num_gallery_cams))
         print("  ----------------------------------------")

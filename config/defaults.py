@@ -18,10 +18,10 @@ _C = CN()
 
 _C.MODEL = CN()
 _C.MODEL.DEVICE = "cuda"
+_C.MODEL.CUDA = 0
 _C.MODEL.NAME = 'resnet50'
 _C.MODEL.LAST_STRIDE = 1
 _C.MODEL.PRETRAIN_PATH = ''
-_C.MODEL.BASEMODEL_PATH = '/export/home/lxy/CHECKPOINTS/online/market1501/baseline/resnet50_model_200.pth'
 
 # -----------------------------------------------------------------------------
 # INPUT
@@ -45,10 +45,8 @@ _C.INPUT.PADDING = 10
 # -----------------------------------------------------------------------------
 _C.DATASETS = CN()
 # List of the dataset names for training, as present in paths_catalog.py
-_C.DATASETS.NAMES = ('market1501',)
-_C.DATASETS.TRAIN = '/export/home/lxy/online-learning-reid/train.txt'
-_C.DATASETS.VALIDATION = '/export/home/lxy/online-learning-reid/validation.txt'
-_C.DATASETS.ONLINE = '/export/home/lxy/online-learning-reid/online.txt'
+_C.DATASETS.BASE = 'duke2market'
+_C.DATASETS.ONLINE = 'market1501'
 
 # -----------------------------------------------------------------------------
 # DataLoader

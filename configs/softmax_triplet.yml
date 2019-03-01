@@ -1,5 +1,6 @@
 MODEL:
   PRETRAIN_PATH: '/export/home/lxy/.torch/models/resnet50-19c8e357.pth'
+  CUDA: 2
 
 
 INPUT:
@@ -9,7 +10,8 @@ INPUT:
   PADDING: 10
 
 DATASETS:
-  NAMES: ('market1501', )
+  BASE: 'duke2market'
+  ONLINE: 'market1501'
 
 DATALOADER:
   SAMPLER: 'softmax_triplet'
@@ -18,27 +20,30 @@ DATALOADER:
 
 SOLVER:
   OPTIMIZER_NAME: 'Adam'
-  MAX_EPOCHS: 200
-  BASE_LR: 0.0000035
+  MAX_EPOCHS: 350
+  BASE_LR: 0.00035
   BIAS_LR_FACTOR: 1
   WEIGHT_DECAY: 0.0005
   WEIGHT_DECAY_BIAS: 0.0005
   IMS_PER_BATCH: 64
 
-  STEPS: [40, 70]
+  STEPS: [80, 180]
   GAMMA: 0.1
 
-  MARGIN: 15.0
+  WARMUP_FACTOR: 0.01
+  WARMUP_ITERS: 20
+  WARMUP_METHOD: 'linear'
 
-  CHECKPOINT_PERIOD: 40
-  LOG_PERIOD: 50
-  EVAL_PERIOD: 5
-  DIST_PERIOD: 1
+  MARGIN: 0.3
+
+  CHECKPOINT_PERIOD: 50
+  LOG_PERIOD: 20
+  EVAL_PERIOD: 50
 
 TEST:
   IMS_PER_BATCH: 256
   WEIGHT: "path"
 
-OUTPUT_DIR: "/export/home/lxy/experiments/online/market1501/online-training"
+OUTPUT_DIR: "duke2market_baseline"
 
 

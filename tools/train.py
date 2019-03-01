@@ -63,11 +63,14 @@ def main():
     if args.config_file != "":
         cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
-    cfg.freeze()
-
-    output_dir = cfg.OUTPUT_DIR
+    output_dir = os.path.join(os.getcwd()+'/logs', cfg.OUTPUT_DIR)
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir)
+    cfg.OUTPUT_DIR = output_dir
+    cfg.freeze()
+
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(cfg.MODEL.CUDA)
+
 
     logger = setup_logger("reid_baseline", output_dir, 0)
     logger.info("Using {} GPUS".format(num_gpus))
