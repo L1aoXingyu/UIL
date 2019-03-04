@@ -1,12 +1,11 @@
 MODEL:
   PRETRAIN_PATH: '/export/home/lxy/.torch/models/resnet50-19c8e357.pth'
-  CUDA: 1
+  CUDA: 3
 
 
 INPUT:
   SIZE_TRAIN: [256, 128]
   SIZE_TEST: [256, 128]
-  PROB: 0.5 # random horizontal flip
 
 DATASETS:
   BASE: 'duke2market'
@@ -44,6 +43,6 @@ TEST:
   IMS_PER_BATCH: 256
   WEIGHT: "path"
 
-OUTPUT_DIR: "pretrain_cluster_merge"
+OUTPUT_DIR: "cross_cluster"
 
 

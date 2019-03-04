@@ -50,9 +50,11 @@ class Duke2Market1501(BaseImageDataset):
         pid2label = {pid: label for label, pid in enumerate(pid_container)}
 
         dataset = []
+        index = 0
         for img_path in img_paths:
             pid, camid = map(int, pattern.search(img_path).groups())
             if pid == -1: continue  # junk images are just ignored
             if relabel: pid = pid2label[pid]
-            dataset.append((img_path, pid, camid))
+            dataset.append((img_path, pid, camid, index))
+            index += 1
         return dataset

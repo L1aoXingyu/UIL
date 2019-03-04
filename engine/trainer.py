@@ -4,19 +4,21 @@
 @contact: sherlockliao01@gmail.com
 """
 
+import copy
 import logging
 
-import copy
 import numpy as np
+import torch.nn.functional as F
 import torch
 from ignite.engine import Engine, Events
 from ignite.handlers import ModelCheckpoint, Timer
 from ignite.metrics import RunningAverage
-from solver import make_optimizer, WarmupMultiStepLR
+
 from data.build import get_dataloader
+from layers.exclusive_loss import ExLoss
+from solver import make_optimizer, WarmupMultiStepLR
 from utils.reid_metric import R1_mAP
 
-from layers.exclusive_loss import ExLoss
 
 def create_supervised_trainer(model, optimizer, loss_fn,
                               device=None):
@@ -86,7 +88,6 @@ def create_supervised_evaluator(model, metrics,
 
 
 def create_online_trainer(model, optimizer, loss_fn):
-
     def _update(engine, batch):
         model.train()
         optimizer.zero_grad()
@@ -122,7 +123,7 @@ def do_train(
     device = cfg.MODEL.DEVICE
     epochs = cfg.SOLVER.MAX_EPOCHS
 
-    logger = logging.getLogger("reid_baseline.train")
+    logger = logging.getLogger("reid_online.train")
     logger.info("Start training")
     trainer = create_supervised_trainer(model, optimizer, loss_fn, device=device)
     evaluator = create_supervised_evaluator(model, metrics={'r1_mAP': R1_mAP(num_query)}, device=device)
@@ -175,6 +176,7 @@ def do_train(
 
 
 def do_online_train(
+        on_step,
         cfg,
         model,
         online_train,
@@ -191,7 +193,7 @@ def do_online_train(
     nums_to_merge = int(num_train_ids * 0.05)
 
     logger = logging.getLogger("reid_online.train")
-    logger.info("Start training")
+    logger.info("Online dataset {} start training".format(on_step))
 
     model.to(device)
 
@@ -210,7 +212,7 @@ def do_online_train(
         dists.addmm_(1, -2, x, y.t())
         return dists
 
-    def select_merge_data(u_feas, label, label_to_images,  ratio_n,  dists):
+    def select_merge_data(u_feas, label, label_to_images, ratio_n, dists):
         dists.add_(torch.tril(100000 * torch.ones(len(u_feas), len(u_feas))))
 
         # 每个聚类中心图片的张数
@@ -239,12 +241,11 @@ def do_online_train(
                 label = [label1 if x == label2 else x for x in label]
             else:
                 label = [label2 if x == label1 else x for x in label]  # move to smaller label
-            if u_label[idx1[i]] == u_label[idx2[i]]:  # if label match, correct count add 1
+            if u_label[idx1[i]] == u_label[idx2[i]] and label1 != label2:  # if label match, correct count add 1
                 correct += 1
             num_merged = num_before_merge - len(np.sort(np.unique(np.array(label))))
             if num_merged == num_to_merge:  # if reach merged number, break
                 break
-
         # set new label to the new training data
         unique_label = np.sort(np.unique(np.array(label)))
         for i in range(len(unique_label)):
@@ -257,8 +258,10 @@ def do_online_train(
             new_train_data.append(new_data)
 
         num_after_merge = len(np.unique(np.array(label)))  # remaining cluster center
-        logger.info("num of label before merge: {}, after_merge: {}, sub: {}"
-                    .format(num_before_merge, num_after_merge, num_before_merge - num_after_merge))
+        logger.info("num of label before merge: {}, after_merge: {}, sub: {}, Prec: {}/{}={:.3f}"
+                    .format(num_before_merge, num_after_merge, num_before_merge - num_after_merge,
+                            correct, num_before_merge - num_after_merge, correct/(num_before_merge - num_after_merge)))
+
         return new_train_data, label
 
     def get_new_train_data(labels, nums_to_merge, size_penalty):
@@ -306,8 +309,8 @@ def do_online_train(
     new_train_data = online_train
     labels = [d[3] for d in new_train_data]
     criterion = ExLoss(2048, len(online_train), t=10).cuda()
-    for step in range(int(1/0.05) - 1):
-        logger.info('step: {}/{}'.format(step+1, int(1/0.05)-1))
+    for step in range(int(1 / 0.05) - 1):
+        logger.info('step: {}/{}'.format(step + 1, int(1 / 0.05) - 1))
 
         epochs = 20 if step == 0 else 2
 

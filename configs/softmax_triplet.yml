@@ -7,7 +7,6 @@ INPUT:
   SIZE_TRAIN: [256, 128]
   SIZE_TEST: [256, 128]
   PROB: 0.5 # random horizontal flip
-  PADDING: 10
 
 DATASETS:
   BASE: 'duke2market'
@@ -44,6 +43,6 @@ TEST:
   IMS_PER_BATCH: 256
   WEIGHT: "path"
 
-OUTPUT_DIR: "duke2market_baseline"
+OUTPUT_DIR: "duke2market_paper_model"
 
 

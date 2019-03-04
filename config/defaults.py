@@ -37,8 +37,6 @@ _C.INPUT.PROB = 0.5
 _C.INPUT.PIXEL_MEAN = [0.485, 0.456, 0.406]
 # Values to be used for image normalization
 _C.INPUT.PIXEL_STD = [0.229, 0.224, 0.225]
-# Value of padding size
-_C.INPUT.PADDING = 10
 
 # -----------------------------------------------------------------------------
 # Dataset

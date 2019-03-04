@@ -70,7 +70,7 @@ class Baseline(nn.Module):
 
 
 class AvgPooling(nn.Module):
-    def __init__(self, input_feature_size, embeding_fea_size=1024, dropout=0.5):
+    def __init__(self, input_feature_size, embeding_fea_size=1024, dropout=0.5, num_classes=0):
         super(self.__class__, self).__init__()
         # embeding
         self.embeding_fea_size = embeding_fea_size
@@ -82,10 +82,19 @@ class AvgPooling(nn.Module):
         nn.init.constant_(self.embeding_bn.bias, 0)
         self.drop = nn.Dropout(dropout)
 
+        self.num_classes = num_classes
+        if self.num_classes != 0:
+            self.classifier = nn.Linear(2048, num_classes)
+            nn.init.normal_(self.classifier.weight, std=0.001)
+            nn.init.constant_(self.classifier.bias, 0)
+
     def forward(self, inputs):
         eval_feas = F.normalize(inputs, p=2, dim=1)
         net = self.embeding(inputs)
         net = self.embeding_bn(net)
+        if self.num_classes != 0:
+            net = self.classifier(net)
+            return net, eval_feas
         net = F.normalize(net, p=2, dim=1)
         net = self.drop(net)
         # embedding feature, test feature
@@ -93,12 +102,13 @@ class AvgPooling(nn.Module):
 
 
 class End2End_AvgPooling(nn.Module):
-    def __init__(self, dropout=0, embeding_fea_size=2048):
+    def __init__(self, dropout=0, embeding_fea_size=2048, num_classes=0):
         super(self.__class__, self).__init__()
         self.base = ResNet(2)
         self.base.load_param('/export/home/lxy/.torch/models/resnet50-19c8e357.pth')
         self.gap = nn.AdaptiveAvgPool2d((1, 1))
-        self.avg_pooling = AvgPooling(input_feature_size=2048, embeding_fea_size=embeding_fea_size, dropout=dropout)
+        self.avg_pooling = AvgPooling(input_feature_size=2048, embeding_fea_size=embeding_fea_size, dropout=dropout,
+                                      num_classes=num_classes)
 
     def forward(self, x):
         # resnet encoding
@@ -111,3 +121,10 @@ class End2End_AvgPooling(nn.Module):
         # avg pooling
         output = self.avg_pooling(resnet_feature)
         return output
+
+    def load_weight(self, basemodel_path):
+        param_dict = torch.load(basemodel_path)
+        for i in param_dict:
+            if i in self.state_dict():
+                self.state_dict()[i].copy_(param_dict[i])
+

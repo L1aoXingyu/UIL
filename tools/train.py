@@ -7,6 +7,8 @@
 import argparse
 import os
 import sys
+import numpy as np
+from collections import defaultdict
 
 from torch.backends import cudnn
 
@@ -27,11 +29,12 @@ def train(cfg):
     train_loader, online_train, val_loader, num_query, num_classes = make_data_loader(cfg)
 
     # prepare model
-    model = build_model(cfg, 0)
+    # model = build_model(cfg, 0)
     # load pretrained model
     # model.load_weight('/export/home/lxy/online-reid/logs/duke2market_baseline/resnet50_model_350.pth')
-    # model = End2End_AvgPooling(0.5, 2048)
-
+    # model = End2End_AvgPooling(0.5, 2048, 702)
+    model = End2End_AvgPooling(0.5, 2048, 0)
+    # model.load_weight('./logs/duke2market_paper_model/resnet50_model_350.pth')
     # optimizer = make_optimizer(cfg, model)
     # scheduler = WarmupMultiStepLR(optimizer, cfg.SOLVER.STEPS, cfg.SOLVER.GAMMA, cfg.SOLVER.WARMUP_FACTOR,
     #                               cfg.SOLVER.WARMUP_ITERS, cfg.SOLVER.WARMUP_METHOD)
@@ -44,7 +47,6 @@ def train(cfg):
     #     cfg,
     #     model,
     #     train_loader,
-    #     online_train,
     #     val_loader,
     #     optimizer,
     #     scheduler,
@@ -52,13 +54,41 @@ def train(cfg):
     #     num_query
     # )
 
-    do_online_train(
-        cfg,
-        model,
-        online_train,
-        val_loader,
-        num_query
-    )
+    # do_online_train(
+    #       0,
+    #       cfg,
+    #       model,
+    #       online_train,
+    #       val_loader,
+    #       num_query
+    # )
+
+    # prepare online dataset
+    # online_dict = defaultdict(list)
+    # increment_id = 100
+    # current_id = 100
+    # chosed_id = 0
+    # for d in online_train:
+    #     if d[1] < current_id:
+    #         online_dict[chosed_id].append(list(d))
+    #     else:
+    #         current_id += increment_id
+    #         chosed_id += 1
+    #
+    # for on_step in online_dict:
+    #     online_set = online_dict[1]
+    #     # reorganize index
+    #     for i, d in enumerate(online_set):
+    #         d[3] = i
+    #
+    #     do_online_train(
+    #         on_step,
+    #         cfg,
+    #         model,
+    #         online_set,
+    #         val_loader,
+    #         num_query
+    #     )
 
 
 def main():
