@@ -22,7 +22,7 @@ class MyTestCase(unittest.TestCase):
     #     from IPython import embed;
     #     embed()
     def test_duke2market(self):
-        dataset = init_dataset('duke2market')
+        dataset = init_dataset('market1501')
         from IPython import embed; embed()
 
 

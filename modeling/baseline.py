@@ -5,6 +5,7 @@
 """
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from .backbones.resnet import ResNet
@@ -41,25 +42,25 @@ class Baseline(nn.Module):
         self.base = ResNet(last_stride)
         self.gap = nn.AdaptiveAvgPool2d(1)
 
-        if num_classes != 0:
-            self.base.load_param(resnet_path)
-            self.bottleneck = nn.BatchNorm1d(self.in_planes)
-            self.bottleneck.bias.requires_grad_(False)  # no shift
-            self.classifier = nn.Linear(self.in_planes, num_classes, bias=False)
+        self.base.load_param(resnet_path)
+        self.bottleneck = nn.BatchNorm1d(self.in_planes)
+        self.bottleneck.bias.requires_grad_(False)  # no shift
 
-            self.bottleneck.apply(weights_init_kaiming)
+        self.bottleneck.apply(weights_init_kaiming)
+        self.num_classes = num_classes
+
+        self.dropout = nn.Dropout(0.5)
+        if num_classes != 0:
+            self.classifier = nn.Linear(self.in_planes, num_classes, bias=False)
             self.classifier.apply(weights_init_classifier)
 
     def forward(self, x):
         x = self.base(x)  # (b, 2048, 24, 8)
         global_feat = self.gap(x)  # (b, 2048, 1, 1)
         global_feat = global_feat.view(global_feat.shape[0], -1)  # flatten to (bs, 2048)
-        if self.training:
-            feat = self.bottleneck(global_feat)  # normalize for angular softmax
-            cls_score = self.classifier(feat)
-            return cls_score, global_feat  # global feature for triplet loss
-        else:
-            return global_feat
+        feat = self.bottleneck(global_feat)  # normalize for angular softmax
+        feat = self.dropout(feat)
+        return F.normalize(feat, p=2, dim=1), F.normalize(global_feat, p=2, dim=1)
 
     def load_weight(self, basemodel_path):
         param_dict = torch.load(basemodel_path)
@@ -67,3 +68,46 @@ class Baseline(nn.Module):
             if i in self.state_dict():
                 self.state_dict()[i].copy_(param_dict[i])
 
+
+class AvgPooling(nn.Module):
+    def __init__(self, input_feature_size, embeding_fea_size=1024, dropout=0.5):
+        super(self.__class__, self).__init__()
+        # embeding
+        self.embeding_fea_size = embeding_fea_size
+        self.embeding = nn.Linear(input_feature_size, embeding_fea_size)
+        self.embeding_bn = nn.BatchNorm1d(embeding_fea_size)
+        nn.init.kaiming_normal_(self.embeding.weight, mode='fan_out')
+        nn.init.constant_(self.embeding.bias, 0)
+        nn.init.constant_(self.embeding_bn.weight, 1)
+        nn.init.constant_(self.embeding_bn.bias, 0)
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, inputs):
+        eval_feas = F.normalize(inputs, p=2, dim=1)
+        net = self.embeding(inputs)
+        net = self.embeding_bn(net)
+        net = F.normalize(net, p=2, dim=1)
+        net = self.drop(net)
+        # embedding feature, test feature
+        return net, eval_feas
+
+
+class End2End_AvgPooling(nn.Module):
+    def __init__(self, dropout=0, embeding_fea_size=2048):
+        super(self.__class__, self).__init__()
+        self.base = ResNet(2)
+        self.base.load_param('/export/home/lxy/.torch/models/resnet50-19c8e357.pth')
+        self.gap = nn.AdaptiveAvgPool2d((1, 1))
+        self.avg_pooling = AvgPooling(input_feature_size=2048, embeding_fea_size=embeding_fea_size, dropout=dropout)
+
+    def forward(self, x):
+        # resnet encoding
+        resnet_feature = self.base(x)
+        resnet_feature = self.gap(resnet_feature)
+
+        # reshape back into (batch, samples, ...)
+        resnet_feature = resnet_feature.view(resnet_feature.shape[0], -1)
+
+        # avg pooling
+        output = self.avg_pooling(resnet_feature)
+        return output

@@ -12,6 +12,17 @@ from .samplers import RandomIdentitySampler
 from .transforms import build_transforms
 
 
+def get_dataloader(cfg, train_data, is_train=True):
+    transform = build_transforms(cfg, is_train=is_train)
+    batch_size = cfg.SOLVER.IMS_PER_BATCH if is_train else cfg.TEST.IMS_PER_BATCH
+    data_loader = DataLoader(
+        ImageDataset(train_data, transform=transform),
+        batch_size=batch_size, num_workers=cfg.DATALOADER.NUM_WORKERS,
+        shuffle=is_train, pin_memory=True, drop_last=is_train
+    )
+    return data_loader
+
+
 def make_data_loader(cfg):
     train_transforms = build_transforms(cfg, is_train=True)
     test_transforms = build_transforms(cfg, is_train=False)
@@ -36,7 +47,7 @@ def make_data_loader(cfg):
 
     # online set
     onlineset = init_dataset(cfg.DATASETS.ONLINE)
-    online_train = ImageDataset(onlineset.train, transform=train_transforms)
+    online_train = onlineset.train
 
     # query/gallery set
     test_set = ImageDataset(onlineset.query + onlineset.gallery, test_transforms)
@@ -44,7 +55,7 @@ def make_data_loader(cfg):
         test_set, batch_size=cfg.TEST.IMS_PER_BATCH, shuffle=False, num_workers=num_workers,
         collate_fn=test_collate_fn
     )
-    return train_loader, test_loader, len(onlineset.query), num_classes
+    return train_loader, online_train,  test_loader, len(onlineset.query), num_classes
 
 
 def make_online_loader(cfg):
