@@ -21,7 +21,7 @@
 
 |Setting | Market1501 Rank1 (mAP)|
 | - | - |
-|paper model | \ |
+|paper model | 74.0 (48.2) |
 
 
 ### Online Result
