@@ -72,7 +72,7 @@ class Baseline(nn.Module):
 class AvgPooling(nn.Module):
     def __init__(self, input_feature_size, embeding_fea_size=1024, dropout=0.5, num_classes=0):
         super(self.__class__, self).__init__()
-        # embeding
+        # embedding
         self.embeding_fea_size = embeding_fea_size
         self.embeding = nn.Linear(input_feature_size, embeding_fea_size)
         self.embeding_bn = nn.BatchNorm1d(embeding_fea_size)
@@ -89,12 +89,15 @@ class AvgPooling(nn.Module):
             nn.init.constant_(self.classifier.bias, 0)
 
     def forward(self, inputs):
-        eval_feas = F.normalize(inputs, p=2, dim=1)
+        # eval_feas = F.normalize(inputs, p=2, dim=1)
+        eval_feas = inputs
         net = self.embeding(inputs)
         net = self.embeding_bn(net)
-        if self.num_classes != 0:
-            net = self.classifier(net)
-            return net, eval_feas
+        if self.num_classes != 0 and self.training:
+            score = self.classifier(net)
+            net = F.normalize(net, p=2, dim=1)
+            net = self.drop(net)
+            return net, eval_feas, score
         net = F.normalize(net, p=2, dim=1)
         net = self.drop(net)
         # embedding feature, test feature
@@ -102,9 +105,9 @@ class AvgPooling(nn.Module):
 
 
 class End2End_AvgPooling(nn.Module):
-    def __init__(self, dropout=0, embeding_fea_size=2048, num_classes=0):
+    def __init__(self, last_stride=2, dropout=0, embeding_fea_size=2048, num_classes=0):
         super(self.__class__, self).__init__()
-        self.base = ResNet(2)
+        self.base = ResNet(last_stride)
         self.base.load_param('/export/home/lxy/.torch/models/resnet50-19c8e357.pth')
         self.gap = nn.AdaptiveAvgPool2d((1, 1))
         self.avg_pooling = AvgPooling(input_feature_size=2048, embeding_fea_size=embeding_fea_size, dropout=dropout,
@@ -127,4 +130,10 @@ class End2End_AvgPooling(nn.Module):
         for i in param_dict:
             if i in self.state_dict():
                 self.state_dict()[i].copy_(param_dict[i])
+
+    def reset_embedding_param(self):
+        nn.init.kaiming_normal_(self.avg_pooling.embeding.weight, mode='fan_out')
+        nn.init.constant_(self.avg_pooling.embeding.bias, 0)
+        nn.init.constant_(self.avg_pooling.embeding_bn.weight, 1)
+        nn.init.constant_(self.avg_pooling.embeding_bn.bias, 0)
 

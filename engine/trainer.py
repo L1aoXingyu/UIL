@@ -44,7 +44,7 @@ def create_supervised_trainer(model, optimizer, loss_fn,
         img, target = batch
         img = img.cuda()
         target = target.cuda()
-        score, feat = model(img)
+        rep_feat, feat, score = model(img)
         loss = loss_fn(score, feat, target)
         loss.backward()
         optimizer.step()
@@ -76,7 +76,7 @@ def create_supervised_evaluator(model, metrics,
         with torch.no_grad():
             data, pids, camids = batch
             data = data.cuda()
-            _, feat = model(data)
+            feat = model(data)[1]
             return feat, pids, camids
 
     engine = Engine(_inference)
@@ -87,21 +87,59 @@ def create_supervised_evaluator(model, metrics,
     return engine
 
 
-def create_online_trainer(model, optimizer, loss_fn):
-    def _update(engine, batch):
+def create_online_trainer(model, optimizer, u_criterion, cls_criterion, alpha, train_loader):
+    def _get_weighted_loss(u_loss, l_loss, alpha):
+        loss = alpha * u_loss + (1 - alpha) * l_loss
+        return loss
+
+    def _update_with_label_data(engine, batch):
         model.train()
         optimizer.zero_grad()
-        img, label, camera, indexs = batch
-        img = img.cuda()
+
+        # unlabel data
+        u_img, _, _, indexs = batch
+        # label data
+        img, label = next(iter(train_loader))
         target = indexs.cuda()
-        feats, _ = model(img)
-        loss, outputs = loss_fn(feats, target)
+        label = label.cuda()
+
+        img_size = img.shape[0]
+        all_img = torch.cat((img, u_img), dim=0)  # [bs1+bs2, 3, 256, 128]
+        all_img = all_img.cuda()
+        feats, eval_feat, scores = model(all_img)
+
+        u_loss, outputs = u_criterion(feats[img_size:], target)
+
+        l_loss = cls_criterion(scores[:img_size], eval_feat[:img_size], label)
+
+        loss = _get_weighted_loss(u_loss, l_loss, alpha)
         loss.backward()
         optimizer.step()
 
-        acc = (outputs.max(1)[1] == target).float().mean()
+        u_acc = (outputs.max(1)[1] == target).float().mean()
+        l_acc = (scores[:img_size].max(1)[1] == label).float().mean()
 
-        return loss.item(), acc.item()
+        return loss.item(), u_acc.item(), l_acc.item()
+
+    def _update(engine, batch):
+        model.train()
+        optimizer.zero_grad()
+
+        # unlabel data
+        u_img, _, _, indexs = batch
+        target = indexs.cuda()
+
+        u_img = u_img.cuda()
+        feats, eval_feat = model(u_img)
+
+        loss, outputs = u_criterion(feats, target)
+
+        loss.backward()
+        optimizer.step()
+
+        u_acc = (outputs.max(1)[1] == target).float().mean()
+
+        return loss.item(), u_acc.item(), 0
 
     return Engine(_update)
 
@@ -179,7 +217,9 @@ def do_online_train(
         on_step,
         cfg,
         model,
+        train_loader,
         online_train,
+        label_loss_fn,
         val_loader,
         num_query
 ):
@@ -198,6 +238,14 @@ def do_online_train(
     model.to(device)
 
     evaluator = create_supervised_evaluator(model, metrics={'r1_mAP': R1_mAP(num_query)}, device=device)
+    # test model
+    # evaluator.run(val_loader)
+    # cmc, mAP = evaluator.state.metrics['r1_mAP']
+    # logger.info("Validation Results - Step: {}".format(0))
+    # logger.info("mAP: {:.1%}".format(mAP))
+    # for r in [1, 5, 10]:
+    #     logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
+
 
     u_dataloader = get_dataloader(cfg, online_train, is_train=False)
     u_label = np.array([label for _, label, _, _ in online_train])
@@ -285,8 +333,7 @@ def do_online_train(
         feature_avg = np.zeros((len(label_to_images), len(u_feas[0])))  # [cluster, feat_dim]
         fc_avg = np.zeros((len(label_to_images), len(fcs[0])))
         for l in label_to_images:
-            feas = u_feas[label_to_images[l]]
-            feature_avg[l] = np.mean(feas, axis=0)
+            feature_avg[l] = np.mean(u_feas[label_to_images[l]], axis=0)
             fc_avg[l] = np.mean(fcs[label_to_images[l]], axis=0)
 
         # calculate distance between features
@@ -309,20 +356,28 @@ def do_online_train(
     new_train_data = online_train
     labels = [d[3] for d in new_train_data]
     criterion = ExLoss(2048, len(online_train), t=10).cuda()
-    for step in range(int(1 / 0.05) - 1):
+    total_step = int(1 / 0.05) - 1
+    for step in range(total_step):
         logger.info('step: {}/{}'.format(step + 1, int(1 / 0.05) - 1))
 
         epochs = 20 if step == 0 else 2
 
+        # totally wroing (x)
+        # freeze conv param
+        # if on_step != 0 and step == 0:
+        #     for key, value in model.named_parameters():
+        #         if 'base' in key:
+        #             value.requires_grad_(False)
+
         # prepare dataset
-        train_loader = get_dataloader(cfg, new_train_data, is_train=True)
+        online_loader = get_dataloader(cfg, new_train_data, is_train=True)
         # prepare optimizer
         optimizer = make_optimizer(cfg, model, step)
         scheduler = WarmupMultiStepLR(optimizer, cfg.SOLVER.STEPS, cfg.SOLVER.GAMMA, cfg.SOLVER.WARMUP_FACTOR,
                                       cfg.SOLVER.WARMUP_ITERS, cfg.SOLVER.WARMUP_METHOD)
 
         # prepare trainer
-        trainer = create_online_trainer(model, optimizer, criterion)
+        trainer = create_online_trainer(model, optimizer, criterion, label_loss_fn, float(step/total_step), train_loader)
         # checkpointer = ModelCheckpoint(output_dir, cfg.MODEL.NAME, checkpoint_period, n_saved=10, require_empty=False)
         timer = Timer(average=True)
 
@@ -333,7 +388,8 @@ def do_online_train(
 
         # average metric to attach on trainer
         RunningAverage(output_transform=lambda x: x[0]).attach(trainer, 'avg_loss')
-        RunningAverage(output_transform=lambda x: x[1]).attach(trainer, 'avg_acc')
+        RunningAverage(output_transform=lambda x: x[1]).attach(trainer, 'avg_u_acc')
+        RunningAverage(output_transform=lambda x: x[2]).attach(trainer, 'avg_l_acc')
 
         @trainer.on(Events.EPOCH_STARTED)
         def adjust_learning_rate(engine):
@@ -341,25 +397,26 @@ def do_online_train(
 
         @trainer.on(Events.ITERATION_COMPLETED)
         def log_training_loss(engine):
-            iter = (engine.state.iteration - 1) % len(train_loader) + 1
-            log_period = len(train_loader) // 2
+            iter = (engine.state.iteration - 1) % len(online_loader) + 1
+            log_period = len(online_loader) // 2
             if iter % log_period == 0:
-                logger.info("Epoch[{}] Iteration[{}/{}] Loss: {:.3f}, Acc: {:.3f}, Base Lr: {:.2e}"
-                            .format(engine.state.epoch, iter, len(train_loader),
-                                    engine.state.metrics['avg_loss'], engine.state.metrics['avg_acc'],
-                                    scheduler.get_lr()[0]))
+                logger.info("Epoch[{}] Iteration[{}/{}] Loss: {:.3f}, Unlabel Acc: {:.3f}, "
+                            "label Acc: {:.3f} Base Lr: {:.2e}"
+                            .format(engine.state.epoch, iter, len(online_loader),
+                                    engine.state.metrics['avg_loss'], engine.state.metrics['avg_u_acc'],
+                                    engine.state.metrics['avg_l_acc'], scheduler.get_lr()[0]))
 
         # adding handlers using `trainer.on` decorator API
         @trainer.on(Events.EPOCH_COMPLETED)
         def print_times(engine):
             logger.info('Epoch {} done. Time per batch: {:.3f}[s] Speed: {:.1f}[samples/s]'
                         .format(engine.state.epoch, timer.value() * timer.step_count,
-                                train_loader.batch_size / timer.value()))
+                                online_loader.batch_size / timer.value()))
             logger.info('-' * 10)
             timer.reset()
 
         # train
-        trainer.run(train_loader, max_epochs=epochs)
+        trainer.run(online_loader, max_epochs=epochs)
 
         # evaluation
         evaluator.run(val_loader)
@@ -372,4 +429,4 @@ def do_online_train(
         logger.info('------bottom-up cluster-------')
         # get new cluster id and datasets
         labels, new_train_data, criterion = get_new_train_data(labels, nums_to_merge, 0.005)
-
+    return model.state_dict()

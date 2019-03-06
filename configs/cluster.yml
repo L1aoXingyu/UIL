@@ -43,6 +43,6 @@ TEST:
   IMS_PER_BATCH: 256
   WEIGHT: "path"
 
-OUTPUT_DIR: "cross_cluster"
+OUTPUT_DIR: "cluster_merge_remove_downsample"
 
 

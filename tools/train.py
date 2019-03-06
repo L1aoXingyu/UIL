@@ -24,7 +24,7 @@ from solver import make_optimizer, WarmupMultiStepLR
 from utils.logger import setup_logger
 
 
-def train(cfg):
+def online_train(cfg):
     # prepare dataset
     train_loader, online_train, val_loader, num_query, num_classes = make_data_loader(cfg)
 
@@ -33,13 +33,13 @@ def train(cfg):
     # load pretrained model
     # model.load_weight('/export/home/lxy/online-reid/logs/duke2market_baseline/resnet50_model_350.pth')
     # model = End2End_AvgPooling(0.5, 2048, 702)
-    model = End2End_AvgPooling(0.5, 2048, 0)
-    # model.load_weight('./logs/duke2market_paper_model/resnet50_model_350.pth')
+    model = End2End_AvgPooling(1, 0.5, 2048, 0)
+    # model.load_weight('./logs/duke2market_paper_model_remove_downsample/resnet50_model_250.pth')
     # optimizer = make_optimizer(cfg, model)
     # scheduler = WarmupMultiStepLR(optimizer, cfg.SOLVER.STEPS, cfg.SOLVER.GAMMA, cfg.SOLVER.WARMUP_FACTOR,
     #                               cfg.SOLVER.WARMUP_ITERS, cfg.SOLVER.WARMUP_METHOD)
 
-    # loss_func = make_loss(cfg)
+    loss_func = make_loss(cfg)
 
     arguments = {}
 
@@ -63,6 +63,9 @@ def train(cfg):
     #       num_query
     # )
 
+    # cluster merge
+    do_online_train(0, cfg, model, train_loader, online_train, loss_func, val_loader, num_query)
+
     # prepare online dataset
     # online_dict = defaultdict(list)
     # increment_id = 100
@@ -76,19 +79,45 @@ def train(cfg):
     #         chosed_id += 1
     #
     # for on_step in online_dict:
-    #     online_set = online_dict[1]
+    #     online_set = online_dict[on_step]
     #     # reorganize index
     #     for i, d in enumerate(online_set):
     #         d[3] = i
     #
-    #     do_online_train(
-    #         on_step,
-    #         cfg,
-    #         model,
-    #         online_set,
-    #         val_loader,
-    #         num_query
-    #     )
+    #     state_dict = do_online_train(on_step, cfg, model, train_loader, online_set, loss_func, val_loader, num_query)
+    #     model.load_state_dict(state_dict)
+    #     model.reset_embedding_param()
+
+
+def train(cfg):
+    # prepare dataset
+    train_loader, online_train, val_loader, num_query, num_classes = make_data_loader(cfg)
+
+    # prepare model
+    # model = build_model(cfg, 0)
+    # load pretrained model
+    # model.load_weight('/export/home/lxy/online-reid/logs/duke2market_baseline/resnet50_model_350.pth')
+    model = End2End_AvgPooling(1, 0.5, 2048, 702)
+    # model = End2End_AvgPooling(0.5, 2048, 0)
+    # model.load_weight('./logs/duke2market_paper_model/resnet50_model_350.pth')
+    optimizer = make_optimizer(cfg, model)
+    scheduler = WarmupMultiStepLR(optimizer, cfg.SOLVER.STEPS, cfg.SOLVER.GAMMA, cfg.SOLVER.WARMUP_FACTOR,
+                                  cfg.SOLVER.WARMUP_ITERS, cfg.SOLVER.WARMUP_METHOD)
+
+    loss_func = make_loss(cfg)
+
+    arguments = {}
+
+    do_train(
+        cfg,
+        model,
+        train_loader,
+        val_loader,
+        optimizer,
+        scheduler,
+        loss_func,
+        num_query
+    )
 
 
 def main():
@@ -126,7 +155,8 @@ def main():
     logger.info("Running with config:\n{}".format(cfg))
 
     cudnn.benchmark = True
-    train(cfg)
+    online_train(cfg)
+    # train(cfg)
 
 
 if __name__ == '__main__':
