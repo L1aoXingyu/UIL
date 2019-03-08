@@ -246,7 +246,6 @@ def do_online_train(
     # for r in [1, 5, 10]:
     #     logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
 
-
     u_dataloader = get_dataloader(cfg, online_train, is_train=False)
     u_label = np.array([label for _, label, _, _ in online_train])
 
@@ -429,4 +428,4 @@ def do_online_train(
         logger.info('------bottom-up cluster-------')
         # get new cluster id and datasets
         labels, new_train_data, criterion = get_new_train_data(labels, nums_to_merge, 0.005)
-    return model.state_dict()
+    return model.state_dict(), new_train_data

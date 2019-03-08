@@ -32,7 +32,7 @@ def create_supervised_evaluator(model, metrics,
         with torch.no_grad():
             data, pids, camids = batch
             data = data.cuda()
-            feat = model(data)
+            feat = model(data)[1]
             return feat, pids, camids
 
     engine = Engine(_inference)
@@ -51,7 +51,7 @@ def inference(
 ):
     device = cfg.MODEL.DEVICE
 
-    logger = logging.getLogger("reid_baseline.inference")
+    logger = logging.getLogger("reid_online.inference")
     logger.info("Start inferencing")
     evaluator = create_supervised_evaluator(model, metrics={'r1_mAP': R1_mAP(num_query)},
                                             device=device)

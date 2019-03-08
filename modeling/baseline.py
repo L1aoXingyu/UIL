@@ -89,8 +89,8 @@ class AvgPooling(nn.Module):
             nn.init.constant_(self.classifier.bias, 0)
 
     def forward(self, inputs):
-        # eval_feas = F.normalize(inputs, p=2, dim=1)
-        eval_feas = inputs
+        eval_feas = F.normalize(inputs, p=2, dim=1)
+        # eval_feas = inputs
         net = self.embeding(inputs)
         net = self.embeding_bn(net)
         if self.num_classes != 0 and self.training:
