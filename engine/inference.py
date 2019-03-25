@@ -47,7 +47,8 @@ def inference(
         cfg,
         model,
         val_loader,
-        num_query
+        num_query,
+        experiment
 ):
     device = cfg.MODEL.DEVICE
 
@@ -60,5 +61,8 @@ def inference(
     cmc, mAP = evaluator.state.metrics['r1_mAP']
     logger.info('Validation Results')
     logger.info("mAP: {:.1%}".format(mAP))
-    for r in [1, 5, 10]:
+    for r in [1, 5, 10, 20]:
         logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
+    experiment.log_metric('mAP', mAP)
+    experiment.log_metric('rank1', cmc[0])
+    return cmc[0]

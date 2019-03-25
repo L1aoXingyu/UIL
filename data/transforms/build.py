@@ -6,7 +6,7 @@
 
 import torchvision.transforms as T
 
-from .transforms import RandomSizedRectCrop, RectScale
+from .transforms import RandomSizedRectCrop, RectScale, RandomErasing
 
 
 def build_transforms(cfg, is_train=True):
@@ -17,6 +17,7 @@ def build_transforms(cfg, is_train=True):
             T.RandomHorizontalFlip(p=cfg.INPUT.PROB),
             T.ToTensor(),
             normalize_transform,
+            # RandomErasing(probability=cfg.INPUT.PROB, mean=cfg.INPUT.PIXEL_MEAN)
         ])
     else:
         transform = T.Compose([

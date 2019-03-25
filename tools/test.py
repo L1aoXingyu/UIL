@@ -18,7 +18,7 @@ from data import make_data_loader
 from engine.inference import inference
 from modeling import build_model
 from utils.logger import setup_logger
-
+from modeling.baseline import End2End_AvgPooling
 
 def main():
     parser = argparse.ArgumentParser(description="ReID Baseline Inference")
@@ -37,11 +37,7 @@ def main():
     cfg.merge_from_list(args.opts)
     cfg.freeze()
 
-    output_dir = cfg.OUTPUT_DIR
-    if output_dir and not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    logger = setup_logger("reid_baseline", output_dir, 0)
+    logger = setup_logger("reid_online", None, 0)
     logger.info("Using {} GPUS".format(num_gpus))
     logger.info(args)
 
@@ -54,8 +50,9 @@ def main():
 
     cudnn.benchmark = True
 
-    train_loader, val_loader, num_query, num_classes = make_data_loader(cfg)
-    model = build_model(cfg, num_classes)
+    train_loader, online_train, val_loader, num_query, num_classes = make_data_loader(cfg)
+    # model = build_model(cfg, num_classes)
+    model = End2End_AvgPooling(1, 0.5, 2048, num_classes)
     model.load_state_dict(torch.load(cfg.TEST.WEIGHT))
 
     inference(cfg, model, val_loader, num_query)

@@ -125,11 +125,10 @@ class End2End_AvgPooling(nn.Module):
         output = self.avg_pooling(resnet_feature)
         return output
 
-    def load_weight(self, basemodel_path):
-        param_dict = torch.load(basemodel_path)
+    def load_weight(self, param_dict):
         for i in param_dict:
             if i in self.state_dict():
-                self.state_dict()[i].copy_(param_dict[i])
+                self.state_dict()[i].data.copy_(param_dict[i].data)
 
     def reset_embedding_param(self):
         nn.init.kaiming_normal_(self.avg_pooling.embeding.weight, mode='fan_out')

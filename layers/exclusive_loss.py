@@ -27,15 +27,25 @@ class Exclusive(autograd.Function):
 
 
 class ExLoss(nn.Module):
-    def __init__(self, num_features, num_classes, t=1.0,
+    def __init__(self, num_features, num_classes, t=1.0, epsilon=0,
                  weight=None):
         super(ExLoss, self).__init__()
         self.num_features = num_features
+        self.num_classes = num_classes
         self.t = t
         self.weight = weight
         self.register_buffer('V', torch.zeros(num_classes, num_features))
+        # self.register_parameter('V', nn.Parameter(torch.zeros(num_classes, num_features)))
+        self.epsilon = epsilon
 
     def forward(self, inputs, targets):
         outputs = Exclusive(self.V)(inputs, targets) * self.t
+
+        # log_probs = F.log_softmax(outputs, dim=1)
+        # targets = torch.zeros(log_probs.size()).scatter_(1, targets.unsqueeze(1).data.cpu(), 1)
+        # targets = targets.cuda()
+        # targets = (1 - self.epsilon) * targets + self.epsilon / self.num_classes
+        # loss = (-targets * log_probs).mean(0).sum()
+        # return loss, outputs
         loss = F.cross_entropy(outputs, targets, weight=self.weight)
         return loss, outputs

@@ -38,6 +38,5 @@ TEST:
   IMS_PER_BATCH: 256
   WEIGHT: "path"
 
-OUTPUT_DIR: "test_1"
-
+OUTPUT_DIR: "online"
 
