@@ -24,7 +24,11 @@ from solver import make_optimizer, WarmupMultiStepLR
 from utils.logger import setup_logger
 
 
-def online_train(cfg, experiment):
+def online_train(cfg):
+    experiment = Experiment(api_key='x9ZFXG3YxRLmHdyyDdliXHF5E', project_name='cross-domain',
+                            workspace='cross-domain-online-reid')
+    experiment.log_parameters(cfg)
+
     # prepare dataset
     train_loader, online_train, val_loader, num_query, num_classes = make_data_loader(cfg)
 
@@ -76,9 +80,8 @@ def online_train(cfg, experiment):
 
         # cluster_model.load_weight('/export/home/lxy/online-reid/logs/duke2market_paper_model_remove_downsample/resnet50_model_350.pth')
         cluster_model.load_weight(online_model.state_dict())
-        with experiment.train():
-            state_dict = do_online_train(on_step, cfg, cluster_model, train_loader, online_set, loss_func, val_loader,
-                                         num_query, experiment)
+        state_dict = do_online_train(on_step, cfg, cluster_model, train_loader, online_set, loss_func, val_loader,
+                                     num_query, experiment)
 
         torch.save(state_dict, cfg.OUTPUT_DIR + '/model_{}.pth'.format(on_step))
         # torch.save(state_dict, '/export/home/lxy/online-reid/iccv_logs'
@@ -114,6 +117,10 @@ def online_train(cfg, experiment):
     #         online_perf = inference(cfg, online_model, val_loader, num_query)
 
 def cross_train(cfg):
+    experiment = Experiment(api_key='x9ZFXG3YxRLmHdyyDdliXHF5E', project_name='cross-domain',
+                            workspace='cross-domain-online-reid')
+    experiment.log_parameters(cfg)
+
     # prepare dataset
     train_loader, online_train, val_loader, num_query, num_classes = make_data_loader(cfg)
 
@@ -140,9 +147,13 @@ def cross_train(cfg):
     loss_func = make_loss(cfg)
 
     # cluster merge
-    do_online_train(0, cfg, online_model, train_loader, online_train, loss_func, val_loader, num_query)
+    do_online_train(0, cfg, online_model, train_loader, online_train, loss_func, val_loader, num_query, experiment)
 
-def train(cfg, experiment):
+def train(cfg):
+    experiment = Experiment(api_key='x9ZFXG3YxRLmHdyyDdliXHF5E', project_name='cross-domain',
+                            workspace='cross-domain-online-reid')
+    experiment.log_parameters(cfg)
+
     # prepare dataset
     train_loader, online_train, val_loader, num_query, num_classes = make_data_loader(cfg)
 
@@ -206,13 +217,10 @@ def main():
 
     cudnn.benchmark = True
 
-    experiment = Experiment(api_key='x9ZFXG3YxRLmHdyyDdliXHF5E', project_name='online_reid')
-    # experiment = Experiment(api_key='x9ZFXG3YxRLmHdyyDdliXHF5E', project_name='reid_baseline')
-    experiment.log_parameters(cfg)
 
-    online_train(cfg, experiment)
-    # train(cfg, experiment)
-    # cross_train(cfg)
+    # online_train(cfg)
+    # train(cfg)
+    cross_train(cfg)
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 MODEL:
   PRETRAIN_PATH: '/export/home/lxy/.torch/models/resnet50-19c8e357.pth'
-  CUDA: 3
+  CUDA: 1
 
 
 INPUT:

@@ -123,8 +123,7 @@ def create_online_trainer(model, optimizer, u_criterion, cls_criterion, alpha, t
 
     def _update(engine, batch):
         model.train()
-        for optim in optimizer:
-            optim.zero_grad()
+        optimizer.zero_grad()
 
         # unlabel data
         u_img, _, _, indexs = batch
@@ -136,8 +135,7 @@ def create_online_trainer(model, optimizer, u_criterion, cls_criterion, alpha, t
         loss, outputs = u_criterion(feats, target)
 
         loss.backward()
-        for optim in optimizer:
-            optim.step()
+        optimizer.step()
 
         u_acc = (outputs.max(1)[1] == target).float().mean()
 
@@ -246,13 +244,6 @@ def do_online_train(
     model.to(device)
 
     evaluator = create_supervised_evaluator(model, metrics={'r1_mAP': R1_mAP(num_query)}, device=device)
-    # test model
-    # evaluator.run(val_loader)
-    # cmc, mAP = evaluator.state.metrics['r1_mAP']
-    # logger.info("Validation Results - Step: {}".format(0))
-    # logger.info("mAP: {:.1%}".format(mAP))
-    # for r in [1, 5, 10]:
-    #     logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
 
     u_dataloader = get_dataloader(cfg, online_train, is_train=False)
     u_label = np.array([label for _, label, _, _ in online_train])
@@ -365,8 +356,6 @@ def do_online_train(
     criterion = ExLoss(2048, len(online_train), t=10).cuda()
     total_step = int(1 / 0.05) - 1
     for step in range(total_step):
-        # if step < 2: criterion.epsilon = 0
-        # else: criterion.epsilon = 0
         logger.info('step: {}/{}'.format(step + 1, int(1 / 0.05) - 1))
 
         # if step == 0:
@@ -390,7 +379,7 @@ def do_online_train(
                                       cfg.SOLVER.WARMUP_ITERS, cfg.SOLVER.WARMUP_METHOD)
 
         # prepare trainer
-        trainer = create_online_trainer(model, [optimizer], criterion, label_loss_fn,
+        trainer = create_online_trainer(model, optimizer, criterion, label_loss_fn,
                                         float(step/total_step), train_loader)
         # checkpointer = ModelCheckpoint(output_dir, cfg.MODEL.NAME, checkpoint_period, n_saved=10, require_empty=False)
         timer = Timer(average=True)
@@ -410,7 +399,8 @@ def do_online_train(
 
         @trainer.on(Events.ITERATION_COMPLETED)
         def log_training_loss(engine):
-            experiment.log_metric('loss', engine.state.output[0])
+            with experiment.train():
+                experiment.log_metric('loss', engine.state.output[0])
             iter = (engine.state.iteration - 1) % len(online_loader) + 1
             log_period = len(online_loader) // 2
             if iter % log_period == 0:
@@ -440,8 +430,10 @@ def do_online_train(
         for r in [1, 5, 10, 20]:
             logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
 
-        experiment.log_metric('mAP', mAP)
-        experiment.log_metric('rank1', cmc[0])
+        with experiment.test():
+            experiment.log_metric('mAP', mAP)
+            experiment.log_metric('rank1', cmc[0])
+
         logger.info('------bottom-up cluster-------')
         # get new cluster id and datasets
         labels, new_train_data, criterion = get_new_train_data(labels, nums_to_merge, 0.005)
