@@ -4,12 +4,13 @@
 @contact: sherlockliao01@gmail.com
 """
 
-from comet_ml import Experiment
 import argparse, os, sys, time
 import numpy as np
 from collections import defaultdict
 import torch
 from torch.backends import cudnn
+import warnings
+warnings.filterwarnings('ignore')
 
 sys.path.append('.')
 from config import cfg
@@ -25,121 +26,120 @@ from utils.logger import setup_logger
 
 
 def online_train(cfg):
-    experiment = Experiment(api_key='x9ZFXG3YxRLmHdyyDdliXHF5E', project_name='cross-domain',
-                            workspace='cross-domain-online-reid')
-    experiment.log_parameters(cfg)
-
     # prepare dataset
     train_loader, online_train, val_loader, num_query, num_classes = make_data_loader(cfg)
 
     # prepare model
     online_model = End2End_AvgPooling(1, 0.5, 2048, 0)
-    # online_model.load_weight(torch.load('/export/home/lxy/online-reid/logs'
-    #                                     '/duke2market_paper_model_remove_downsample/resnet50_model_350.pth'))
+    # online_model.load_weight(torch.load('/export/home/lxy/online-reid/iccv_logs'
+    #                                     '/duke2market/resnet50_model_350.pth'))
     online_model.load_weight(torch.load('/export/home/lxy/online-reid/iccv_logs'
-                                        '/duke2market/resnet50_model_350.pth'))
-
-    # online_model = End2End_AvgPooling(2, 0.5, 2048, 0)
-    # online_model.load_weight(torch.load('/export/home/lxy/online-reid/logs/duke2market_paper_model'
-    #                                     '/resnet50_model_350.pth'))
-    # online_model.load_weight(torch.load('/export/home/lxy/online-reid/logs'
-    #                                     '/duke_paper_model_baseline/resnet50_model_350.pth'))
+                                        '/market2duke/resnet50_model_350.pth'))
 
     online_model.to('cuda')
-    # inference(cfg, online_model, val_loader, num_query)
-    # model.load_weight(torch.load('./logs/duke2market_paper_model_remove_downsample/resnet50_model_350.pth'))
-
 
     arguments = {}
 
     loss_func = make_loss(cfg)
 
-
     # prepare online dataset
-    online_dict = defaultdict(list)
+    online_train = [list(d) for d in online_train]
+    if cfg.DATASETS.ONLINE == 'market1501':
+        all_ids = list(np.arange(0, 751))
+    else:
+        all_ids = list(np.arange(0, 703))
     increment_id = 100
-    current_id = 100
-    chosed_id = 0
-    for d in online_train:
-        if d[1] < current_id:
-            online_dict[chosed_id].append(list(d))
-        else:
-            current_id += increment_id
-            chosed_id += 1
+    for i in range(7):
+        chosed_id = np.random.choice(all_ids, size=increment_id, replace=False)
+        online_set = list(filter(lambda x: x[1] in chosed_id, online_train))
+
+        # reorder index
+        for k, d in enumerate(online_set):
+            d[3] = k
+    # for d in online_train:
+    #     if d[1] < current_id:
+    #         online_dict[chosed_id].append(list(d))
+    #     else:
+    #         current_id += increment_id
+    #         chosed_id += 1
 
     # ==========
-    for on_step in online_dict:
-        online_set = online_dict[on_step]
-        # reorganize index
-        for i, d in enumerate(online_set):
-            d[3] = i
+    # for on_step in online_dict:
+    #     online_set = online_dict[on_step]
+    #     # reorganize index
+    #     for i, d in enumerate(online_set):
+    #         d[3] = i
 
         cluster_model = End2End_AvgPooling(1, 0.5, 2048, 0)
         # cluster_model.load_weight(torch.load('/export/home/lxy/online-reid/iccv_logs'
         #                                     '/duke2market/resnet50_model_350.pth'))
+        cluster_model.load_weight(torch.load('/export/home/lxy/online-reid/iccv_logs'
+                                            '/market2duke/resnet50_model_350.pth'))
+        # cluster_model.load_weight(online_model.state_dict())
 
-        # cluster_model.load_weight('/export/home/lxy/online-reid/logs/duke2market_paper_model_remove_downsample/resnet50_model_350.pth')
-        cluster_model.load_weight(online_model.state_dict())
-        state_dict = do_online_train(on_step, cfg, cluster_model, train_loader, online_set, loss_func, val_loader,
-                                     num_query, experiment)
+        state_dict = do_online_train(i, cfg, cluster_model, online_set, val_loader, num_query, experiment)
 
-        torch.save(state_dict, cfg.OUTPUT_DIR + '/model_{}.pth'.format(on_step))
-        # torch.save(state_dict, '/export/home/lxy/online-reid/iccv_logs'
-        #                        '/online_iter/model_{}.pth'.format(on_step))
+        torch.save(state_dict, cfg.OUTPUT_DIR + '/duke_model_{}.pth'.format(i))
 
-        # state_dict = torch.load('/export/home/lxy/online-reid/logs/online_pretrain/model_{}.pth'.format(on_step))
         # update online model
         for key, value in state_dict.items():
             if key in online_model.state_dict():
                 online_param = online_model.state_dict()[key].data
-                # if on_step < 6:
                 online_model.state_dict()[key].data.copy_(0.9 * online_param + 0.1 * value.data)
-                # else:
-                    # online_model.state_dict()[key].data.copy_(0.95 * online_param + 0.05 * value.data)
 
+        # online_model.load_weight(state_dict)
         # test online model performance
-        with experiment.test():
-            inference(cfg, online_model, val_loader, num_query, experiment)
+        inference(cfg, online_model, val_loader, num_query, experiment)
     # ==========
 
-    # best_perf = 0.54
-    # for i in range(8):
-    #     state_dict = torch.load('/export/home/lxy/online-reid/logs/online/model_{}.pth'.format(i))
-    #     for coef in np.arange(0.5, 0.9, 0.1):
-    #         online_state_dict = online_model.state_dict().copy()
-    #         for key, value in state_dict.items():
-    #             if key in online_state_dict:
-    #                 online_param = online_model.state_dict()[key].data
-    #                 online_state_dict[key].data.copy_(coef * online_param + (1-coef) * value.data)
-    #
-    #         online_model.load_state_dict(online_state_dict)
-    #         # test online model performance
-    #         online_perf = inference(cfg, online_model, val_loader, num_query)
+
+def online_test(cfg, logger):
+    # prepare dataset
+    train_loader, online_train, val_loader, num_query, num_classes = make_data_loader(cfg)
+
+    # prepare model
+    # online_model = End2End_AvgPooling(1, 0.5, 2048, 0)
+    # online_model.load_weight(torch.load('/export/home/lxy/online-reid/iccv_logs'
+    #                                     '/duke2market/resnet50_model_350.pth'))
+    # online_model.load_weight(torch.load('/export/home/lxy/online-reid/iccv_logs'
+    #                                     '/market2duke/resnet50_model_350.pth'))
+
+
+    # online_model.to('cuda')
+
+    for alpha in np.arange(0, 1.1, 0.1):
+        online_model = End2End_AvgPooling(1, 0.5, 2048, 0)
+        online_model.load_weight(torch.load('/export/home/lxy/online-reid/iccv_logs'
+                                        '/duke2market/resnet50_model_350.pth'))
+        online_model.to('cuda')
+        for on_step in range(7):
+            state_dict = torch.load('/export/home/lxy/online-reid/iccv_logs'
+                                    '/online.04_02_09:37:32/market_model_{}.pth'.format(on_step))
+            # state_dict = torch.load('/export/home/lxy/online-reid/iccv_logs'
+            #                         '/online.04_02_09:38:12/duke_model_{}.pth'.format(on_step))
+            if on_step == 6:
+                alpha /= 2
+            # update online model
+            for key, value in state_dict.items():
+                if key in online_model.state_dict():
+                    online_param = online_model.state_dict()[key].data
+                    online_model.state_dict()[key].data.copy_((1-alpha) * online_param + alpha * value.data)
+
+            # test online model performance
+        logger.info('alpha = {:.1f}'.format(alpha))
+        inference(cfg, online_model, val_loader, num_query, 0)
+    # ==========
 
 def cross_train(cfg):
-    experiment = Experiment(api_key='x9ZFXG3YxRLmHdyyDdliXHF5E', project_name='cross-domain',
-                            workspace='cross-domain-online-reid')
-    experiment.log_parameters(cfg)
-
     # prepare dataset
     train_loader, online_train, val_loader, num_query, num_classes = make_data_loader(cfg)
 
     # prepare model
     online_model = End2End_AvgPooling(1, 0.5, 2048, 0)
-    # online_model.load_weight(torch.load('/export/home/lxy/online-reid/logs'
-    #                                     '/duke2market_paper_model_remove_downsample/resnet50_model_350.pth'))
-    online_model.load_weight(torch.load('/export/home/lxy/online-reid/iccv_logs'
-                                        '/duke2market/resnet50_model_350.pth'))
-
-    # online_model = End2End_AvgPooling(2, 0.5, 2048, 0)
-    # online_model.load_weight(torch.load('/export/home/lxy/online-reid/logs/duke2market_paper_model'
-    #                                     '/resnet50_model_350.pth'))
-    # online_model.load_weight(torch.load('/export/home/lxy/online-reid/logs'
-    #                                     '/duke_paper_model_baseline/resnet50_model_350.pth'))
+    online_model.load_weight(torch.load('./iccv_logs/market2cuhk.10_21_00:33:01/resnet50_model_350.pth'))
 
     online_model.to('cuda')
-    # inference(cfg, online_model, val_loader, num_query)
-    # model.load_weight(torch.load('./logs/duke2market_paper_model_remove_downsample/resnet50_model_350.pth'))
+    # inference(cfg, online_model, val_loader, num_query, experiment)
 
 
     arguments = {}
@@ -147,20 +147,17 @@ def cross_train(cfg):
     loss_func = make_loss(cfg)
 
     # cluster merge
-    do_online_train(0, cfg, online_model, train_loader, online_train, loss_func, val_loader, num_query, experiment)
+    do_online_train(0, cfg, online_model, online_train, val_loader, num_query)
 
 def train(cfg):
-    experiment = Experiment(api_key='x9ZFXG3YxRLmHdyyDdliXHF5E', project_name='cross-domain',
-                            workspace='cross-domain-online-reid')
-    experiment.log_parameters(cfg)
-
     # prepare dataset
     train_loader, online_train, val_loader, num_query, num_classes = make_data_loader(cfg)
 
     # prepare model
     model = End2End_AvgPooling(1, 0.5, 2048, num_classes)
     optimizer = make_optimizer(cfg, model)
-    scheduler = WarmupMultiStepLR(optimizer, cfg.SOLVER.STEPS, cfg.SOLVER.GAMMA, cfg.SOLVER.WARMUP_FACTOR,
+    scheduler = WarmupMultiStepLR(optimizer, cfg.SOLVER.STEPS, 
+                                  cfg.SOLVER.GAMMA, cfg.SOLVER.WARMUP_FACTOR,
                                   cfg.SOLVER.WARMUP_ITERS, cfg.SOLVER.WARMUP_METHOD)
 
     loss_func = make_loss(cfg)
@@ -176,7 +173,6 @@ def train(cfg):
         scheduler,
         loss_func,
         num_query,
-        experiment
     )
 
 
@@ -221,6 +217,7 @@ def main():
     # online_train(cfg)
     # train(cfg)
     cross_train(cfg)
+    # online_test(cfg, logger)
 
 
 if __name__ == '__main__':

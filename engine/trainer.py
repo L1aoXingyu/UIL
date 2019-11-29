@@ -87,43 +87,14 @@ def create_supervised_evaluator(model, metrics,
     return engine
 
 
-def create_online_trainer(model, optimizer, u_criterion, cls_criterion, alpha, train_loader):
-    def _get_weighted_loss(u_loss, l_loss, alpha):
-        loss = alpha * u_loss + (1 - alpha) * l_loss
-        return loss
-
-    def _update_with_label_data(engine, batch):
-        model.train()
-        optimizer.zero_grad()
-
-        # unlabel data
-        u_img, _, _, indexs = batch
-        # label data
-        img, label = next(iter(train_loader))
-        target = indexs.cuda()
-        label = label.cuda()
-
-        img_size = img.shape[0]
-        all_img = torch.cat((img, u_img), dim=0)  # [bs1+bs2, 3, 256, 128]
-        all_img = all_img.cuda()
-        feats, eval_feat, scores = model(all_img)
-
-        u_loss, outputs = u_criterion(feats[img_size:], target)
-
-        l_loss = cls_criterion(scores[:img_size], eval_feat[:img_size], label)
-
-        loss = _get_weighted_loss(u_loss, l_loss, alpha)
-        loss.backward()
-        optimizer.step()
-
-        u_acc = (outputs.max(1)[1] == target).float().mean()
-        l_acc = (scores[:img_size].max(1)[1] == label).float().mean()
-
-        return loss.item(), u_acc.item(), l_acc.item()
+def create_online_trainer(model, optimizer, u_criterion, alpha):
 
     def _update(engine, batch):
         model.train()
         optimizer.zero_grad()
+        if u_criterion.C.grad is not None:
+            u_criterion.C.grad.detach_()
+            u_criterion.C.grad.zero_()
 
         # unlabel data
         u_img, _, _, indexs = batch
@@ -132,10 +103,21 @@ def create_online_trainer(model, optimizer, u_criterion, cls_criterion, alpha, t
         u_img = u_img.cuda()
         feats, eval_feat = model(u_img)
 
-        loss, outputs = u_criterion(feats, target)
+        # repelled loss
+        rep_loss, outputs = u_criterion(feats, target)
 
-        loss.backward()
-        optimizer.step()
+        if alpha == 0:
+            loss = rep_loss
+            loss.backward()
+            optimizer.step()
+        else:
+            # appealed loss
+            cluster_center = u_criterion.C[indexs]
+            app_loss = 0.5 * ((feats - cluster_center) ** 2).sum(dim=1).mean()
+            loss = rep_loss + alpha * app_loss
+            loss.backward()
+            optimizer.step()
+            u_criterion.C.data.add_(-0.1 * u_criterion.C.grad.data)
 
         u_acc = (outputs.max(1)[1] == target).float().mean()
 
@@ -153,7 +135,6 @@ def do_train(
         scheduler,
         loss_fn,
         num_query,
-        experiment
 ):
     log_period = cfg.SOLVER.LOG_PERIOD
     checkpoint_period = cfg.SOLVER.CHECKPOINT_PERIOD
@@ -169,8 +150,8 @@ def do_train(
     checkpointer = ModelCheckpoint(output_dir, cfg.MODEL.NAME, checkpoint_period, n_saved=10, require_empty=False)
     timer = Timer(average=True)
 
-    trainer.add_event_handler(Events.EPOCH_COMPLETED, checkpointer, {'model': model.state_dict(),
-                                                                     'optimizer': optimizer.state_dict()})
+    trainer.add_event_handler(Events.EPOCH_COMPLETED, checkpointer, {'model': model,
+                                                                     'optimizer': optimizer})
     timer.attach(trainer, start=Events.EPOCH_STARTED, resume=Events.ITERATION_STARTED,
                  pause=Events.ITERATION_COMPLETED, step=Events.ITERATION_COMPLETED)
 
@@ -184,7 +165,6 @@ def do_train(
 
     @trainer.on(Events.ITERATION_COMPLETED)
     def log_training_loss(engine):
-        experiment.log_metric('loss', engine.state.output[0])
         iter = (engine.state.iteration - 1) % len(train_loader) + 1
 
         if iter % log_period == 0:
@@ -211,23 +191,16 @@ def do_train(
             logger.info("mAP: {:.1%}".format(mAP))
             for r in [1, 5, 10, 20]:
                 logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
-            with experiment.test():
-                experiment.log_metric('mAP', mAP)
-                experiment.log_metric('rank1', cmc[0])
-    with experiment.train():
-        trainer.run(train_loader, max_epochs=epochs)
+    trainer.run(train_loader, max_epochs=epochs)
 
 
 def do_online_train(
         on_step,
         cfg,
         model,
-        train_loader,
         online_train,
-        label_loss_fn,
         val_loader,
         num_query,
-        experiment
 ):
     checkpoint_period = cfg.SOLVER.CHECKPOINT_PERIOD
     eval_period = cfg.SOLVER.EVAL_PERIOD
@@ -321,7 +294,9 @@ def do_online_train(
                 fcs.append(_fc.cpu())
                 pool5s.append(pool5.cpu())
         fcs = torch.cat(fcs, dim=0).numpy()
-        u_feas = torch.cat(pool5s, dim=0).numpy()
+        u_feas = torch.cat(pool5s, dim=0)
+        eval_feas = F.normalize(u_feas).numpy()
+        u_feas = u_feas.numpy()
 
         label_to_images = {}
         for idx, l in enumerate(labels):
@@ -335,7 +310,7 @@ def do_online_train(
             fc_avg[l] = np.mean(fcs[label_to_images[l]], axis=0)
 
         # calculate distance between features
-        dists = calculate_distance(u_feas)
+        dists = calculate_distance(eval_feas)
 
         idx1, idx2 = select_merge_data(u_feas, labels, label_to_images, size_penalty, dists)
 
@@ -343,11 +318,12 @@ def do_online_train(
 
         num_train_ids = len(np.unique(np.array(labels)))
 
-        # change the criterion classifer, 每次都要根据剩余的聚类中心数目，改变 V 的形状
+        # change the criterion classifer
         criterion = ExLoss(2048, fc_avg.shape[0], t=10).cuda()
         new_classifier = fc_avg.astype(np.float32)
-        # 用平均聚类中心初始化 V, 聚类中心使用的是 fc_avg，也就是计算互斥loss的那一支
-        criterion.V.data.copy_(torch.from_numpy(new_classifier).cuda())
+        new_cluster_center = feature_avg.astype(np.float32)
+        criterion.V.data.copy_(F.normalize(torch.from_numpy(new_classifier)).cuda())
+        criterion.C.data.copy_(F.normalize(torch.from_numpy(new_cluster_center)).cuda())
 
         return labels, new_train_data, criterion
 
@@ -358,17 +334,18 @@ def do_online_train(
     for step in range(total_step):
         logger.info('step: {}/{}'.format(step + 1, int(1 / 0.05) - 1))
 
-        # if step == 0:
-        #     epochs = 20
-        #     # criterion.epsilon = 0.1
-        # elif step < 4:
-        #     epochs = 3
-        #     # criterion.epsilon = 0.05
-        # elif step < 15:
-        #     epochs = 2
-        # else:
-        #     epochs = 1
-            # criterion.epsilon = 0.05
+        if step == 0:
+            epochs = 20
+            alpha = 0
+        elif step < 10:
+            epochs = 3
+            alpha = 0.1
+        elif step < 15:
+            epochs = 2
+            alpha = 0.1
+        else:
+            epochs = 1
+            alpha = 0
 
         epochs = 20 if step == 0 else 2
         # prepare dataset
@@ -379,8 +356,7 @@ def do_online_train(
                                       cfg.SOLVER.WARMUP_ITERS, cfg.SOLVER.WARMUP_METHOD)
 
         # prepare trainer
-        trainer = create_online_trainer(model, optimizer, criterion, label_loss_fn,
-                                        float(step/total_step), train_loader)
+        trainer = create_online_trainer(model, optimizer, criterion, alpha)
         # checkpointer = ModelCheckpoint(output_dir, cfg.MODEL.NAME, checkpoint_period, n_saved=10, require_empty=False)
         timer = Timer(average=True)
 
@@ -399,8 +375,6 @@ def do_online_train(
 
         @trainer.on(Events.ITERATION_COMPLETED)
         def log_training_loss(engine):
-            with experiment.train():
-                experiment.log_metric('loss', engine.state.output[0])
             iter = (engine.state.iteration - 1) % len(online_loader) + 1
             log_period = len(online_loader) // 2
             if iter % log_period == 0:
@@ -429,10 +403,10 @@ def do_online_train(
         logger.info("mAP: {:.1%}".format(mAP))
         for r in [1, 5, 10, 20]:
             logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
-
-        with experiment.test():
-            experiment.log_metric('mAP', mAP)
-            experiment.log_metric('rank1', cmc[0])
+        #
+        # with experiment.test():
+        #     experiment.log_metric('online_mAP', mAP)
+        #     experiment.log_metric('online_rank1', cmc[0])
 
         logger.info('------bottom-up cluster-------')
         # get new cluster id and datasets

@@ -12,6 +12,7 @@ class Exclusive(autograd.Function):
     def __init__(self, V):
         super(Exclusive, self).__init__()
         self.V = V
+        # self.C = C
 
     def forward(self, inputs, targets):
         self.save_for_backward(inputs, targets)
@@ -23,11 +24,12 @@ class Exclusive(autograd.Function):
         grad_inputs = grad_outputs.mm(self.V) if self.needs_input_grad[0] else None
         for x, y in zip(inputs, targets):
             self.V[y] = F.normalize((self.V[y] + x) / 2, p=2, dim=0)
+            # self.C[y] = (self.C[y] + x) / 2
         return grad_inputs, None
 
 
 class ExLoss(nn.Module):
-    def __init__(self, num_features, num_classes, t=1.0, epsilon=0,
+    def __init__(self, num_features, num_classes, t=1.0,
                  weight=None):
         super(ExLoss, self).__init__()
         self.num_features = num_features
@@ -35,8 +37,8 @@ class ExLoss(nn.Module):
         self.t = t
         self.weight = weight
         self.register_buffer('V', torch.zeros(num_classes, num_features))
-        # self.register_parameter('V', nn.Parameter(torch.zeros(num_classes, num_features)))
-        self.epsilon = epsilon
+        # self.register_buffer('C', torch.zeros(num_classes, num_features))
+        self.register_parameter('C', nn.Parameter(torch.zeros(num_classes, num_features)))
 
     def forward(self, inputs, targets):
         outputs = Exclusive(self.V)(inputs, targets) * self.t

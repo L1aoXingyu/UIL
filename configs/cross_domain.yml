@@ -1,6 +1,6 @@
 MODEL:
   PRETRAIN_PATH: '/export/home/lxy/.torch/models/resnet50-19c8e357.pth'
-  CUDA: 1
+  CUDA: 2
 
 
 INPUT:
@@ -8,8 +8,10 @@ INPUT:
   SIZE_TEST: [256, 128]
 
 DATASETS:
-  BASE: 'duke2market'
-  ONLINE: 'market1501'
+#  BASE: 'duke2market'
+#  ONLINE: 'market1501'
+  BASE: 'market2cuhk'
+  ONLINE: 'cuhk03'
 
 DATALOADER:
   SAMPLER: 'softmax_triplet'

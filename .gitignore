@@ -1,2 +1,10 @@
 .idea
 __pycache__
+.vscode
+iccv_logs
+
+.DS_STORE
+*.so
+*.pyc
+build/
+_ext

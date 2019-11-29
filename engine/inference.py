@@ -63,6 +63,7 @@ def inference(
     logger.info("mAP: {:.1%}".format(mAP))
     for r in [1, 5, 10, 20]:
         logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
-    experiment.log_metric('mAP', mAP)
-    experiment.log_metric('rank1', cmc[0])
+    # with experiment.test():
+    #     experiment.log_metric('mAP', mAP)
+    #     experiment.log_metric('rank1', cmc[0])
     return cmc[0]

@@ -7,7 +7,7 @@
 import h5py
 import os.path as osp
 from scipy.io import loadmat
-from scipy.misc import imsave
+from imageio import imwrite
 
 from utils.iotools import mkdir_if_missing, write_json, read_json
 from .bases import BaseImageDataset
@@ -31,7 +31,7 @@ class CUHK03(BaseImageDataset):
     """
     dataset_dir = 'cuhk03'
 
-    def __init__(self, root='/export/home/lxy/DATA/reid', split_id=0, cuhk03_labeled=False,
+    def __init__(self, root='datasets', split_id=0, cuhk03_labeled=False,
                  cuhk03_classic_split=False, verbose=True,
                  **kwargs):
         super(CUHK03, self).__init__()
@@ -62,8 +62,8 @@ class CUHK03(BaseImageDataset):
             split_path = self.split_classic_det_json_path if cuhk03_classic_split else self.split_new_det_json_path
 
         splits = read_json(split_path)
-        assert split_id < len(splits), "Condition split_id ({}) < len(splits) ({}) is false".format(split_id,
-                                                                                                    len(splits))
+        assert split_id < len(splits), "Condition split_id ({}) < len(splits) ({}) is false".format(
+                                        split_id, len(splits))
         split = splits[split_id]
         print("Split index = {}".format(split_id))
 
@@ -75,9 +75,19 @@ class CUHK03(BaseImageDataset):
             print("=> CUHK03 ({}) loaded".format(image_type))
             self.print_dataset_statistics(train, query, gallery)
 
-        self.train = train
-        self.query = query
-        self.gallery = gallery
+        index = 0
+        self.train = []
+        for img_path, pid, camid in train:
+            self.train.append((img_path, pid, camid, index))
+            index += 1
+
+        self.query = []
+        for img_path, pid, camid in query:
+            self.query.append((img_path, pid, camid, 0))
+        
+        self.gallery = []
+        for img_path, pid, camid in gallery:
+            self.gallery.append((img_path, pid, camid, 0))
 
         self.num_train_pids, self.num_train_imgs, self.num_train_cams = self.get_imagedata_info(self.train)
         self.num_query_pids, self.num_query_imgs, self.num_query_cams = self.get_imagedata_info(self.query)
@@ -137,7 +147,7 @@ class CUHK03(BaseImageDataset):
                 img_name = '{:01d}_{:03d}_{:01d}_{:02d}.png'.format(campid + 1, pid + 1, viewid, imgid + 1)
                 img_path = osp.join(save_dir, img_name)
                 if not osp.isfile(img_path):
-                    imsave(img_path, img)
+                    imwrite(img_path, img)
                 img_paths.append(img_path)
             return img_paths
 

@@ -89,8 +89,8 @@ class AvgPooling(nn.Module):
             nn.init.constant_(self.classifier.bias, 0)
 
     def forward(self, inputs):
-        eval_feas = F.normalize(inputs, p=2, dim=1)
-        # eval_feas = inputs
+        # eval_feas = F.normalize(inputs, p=2, dim=1)
+        eval_feas = inputs
         net = self.embeding(inputs)
         net = self.embeding_bn(net)
         if self.num_classes != 0 and self.training:
@@ -106,9 +106,9 @@ class AvgPooling(nn.Module):
 
 class End2End_AvgPooling(nn.Module):
     def __init__(self, last_stride=2, dropout=0, embeding_fea_size=2048, num_classes=0):
-        super(self.__class__, self).__init__()
+        super().__init__()
         self.base = ResNet(last_stride)
-        self.base.load_param('/export/home/lxy/.torch/models/resnet50-19c8e357.pth')
+        self.base.load_param('/home/liaoxingyu2/lxy/.cache/torch/checkpoints/resnet50-19c8e357.pth')
         self.gap = nn.AdaptiveAvgPool2d((1, 1))
         self.avg_pooling = AvgPooling(input_feature_size=2048, embeding_fea_size=embeding_fea_size, dropout=dropout,
                                       num_classes=num_classes)

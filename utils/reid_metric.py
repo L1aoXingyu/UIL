@@ -31,6 +31,7 @@ class R1_mAP(Metric):
 
     def compute(self):
         feats = torch.cat(self.feats, dim=0)
+        feats = F.normalize(feats)
         # query
         qf = feats[:self.num_query]
         q_pids = np.asarray(self.pids[:self.num_query])
